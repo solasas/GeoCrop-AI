@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: geocrop_postgis
+    environment:
+      POSTGRES_DB: geocrop_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - geocrop_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  geocrop_pgdata:

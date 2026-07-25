@@ -10,13 +10,23 @@ const apiClient = axios.create({
 });
 
 export const fetchHealthCheck = async () => {
-  try {
-    const response = await apiClient.get('/health');
-    return response.data;
-  } catch (error) {
-    console.error('Failed to fetch health check:', error);
-    throw error;
-  }
+  const response = await apiClient.get('/health');
+  return response.data;
+};
+
+export const fetchFields = async () => {
+  const response = await apiClient.get('/fields');
+  return response.data;
+};
+
+export const createField = async (fieldData) => {
+  const response = await apiClient.post('/fields', fieldData);
+  return response.data;
+};
+
+export const deleteField = async (fieldId) => {
+  const response = await apiClient.delete(`/fields/${fieldId}`);
+  return response.data;
 };
 
 export default apiClient;
