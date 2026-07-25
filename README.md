@@ -148,23 +148,8 @@ npm run dev
 ```
 - **Web Application Dashboard**: `http://localhost:5173`
 
-### 4. Expo Mobile App Setup (React Native)
-Navigate to the `mobile/` directory to launch the Expo cross-platform mobile application:
-
-```bash
-cd mobile
-
-# Install dependencies
-npm install
-
-# Start Expo Development Server
-npx expo start
-```
-- **Android Emulator**: `npm run android`
-- **iOS Simulator**: `npm run ios`
-- **Expo Go App**: Scan the terminal QR code with your mobile camera or Expo Go app.
-
 ---
+
 
 ## 📡 REST API Reference
 

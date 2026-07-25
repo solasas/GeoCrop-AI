@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, ArrowUpRight, ArrowDownRight, Layers, Info } from 'lucide-react';
+import { Award, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 export default function YieldFactorsSHAP({ shapExplanations }) {
   if (!shapExplanations || shapExplanations.length === 0) return null;
@@ -14,7 +14,7 @@ export default function YieldFactorsSHAP({ shapExplanations }) {
           <Award className="w-4 h-4 text-amber-400" />
           <h3 className="font-bold text-sm text-slate-100">SHAP Yield Driver Analysis</h3>
         </div>
-        <span className="text-[11px] text-slate-400 font-mono">Marginal Impact (t/ha)</span>
+        <span className="text-[11px] text-slate-400 font-mono">Marginal Impact (t/acre)</span>
       </div>
 
       <div className="space-y-3.5">
@@ -22,6 +22,10 @@ export default function YieldFactorsSHAP({ shapExplanations }) {
           const isPositive = factor.is_positive;
           const absImpact = Math.abs(factor.impact);
           const barWidthPercent = Math.min(100, Math.max(12, (absImpact / maxAbsImpact) * 100));
+
+          // Convert impact from t/ha to t/acre (1 t/ha = 0.404686 t/acre)
+          const impactAcresVal = (factor.impact * 0.404686);
+          const displayLabel = `${impactAcresVal >= 0 ? '+' : ''}${impactAcresVal.toFixed(2)} t/acre`;
 
           return (
             <div key={idx} className="space-y-1.5 bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
@@ -43,7 +47,7 @@ export default function YieldFactorsSHAP({ shapExplanations }) {
                       : 'bg-red-500/15 text-red-400 border border-red-500/30'
                   }`}
                 >
-                  {factor.impact_label}
+                  {displayLabel}
                 </span>
               </div>
 

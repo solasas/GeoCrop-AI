@@ -1,11 +1,11 @@
 import React from 'react';
-import { Map, LayoutDashboard, Calendar, Settings, HelpCircle } from 'lucide-react';
+import { Map, BarChart3, Calendar } from 'lucide-react';
 
 export default function LeftSidebarNav({ activeView = 'map', onViewChange }) {
   const items = [
-    { id: 'map', icon: Map, label: 'Farm Map' },
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'calendar', icon: Calendar, label: 'Calendar' },
+    { id: 'map', icon: Map, label: 'Farm Satellite Map' },
+    { id: 'analytics', icon: BarChart3, label: 'Yield Analytics' },
+    { id: 'calendar', icon: Calendar, label: 'Crop Calendar' },
   ];
 
   return (
@@ -21,8 +21,8 @@ export default function LeftSidebarNav({ activeView = 'map', onViewChange }) {
               onClick={() => onViewChange && onViewChange(item.id)}
               className={`p-3 rounded-2xl transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-slate-100 text-slate-900 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
+                  ? 'bg-slate-900 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'
               }`}
               title={item.label}
             >
@@ -34,13 +34,9 @@ export default function LeftSidebarNav({ activeView = 'map', onViewChange }) {
 
       {/* Bottom Profile Avatar */}
       <div className="flex flex-col items-center space-y-3">
-        <button className="w-9 h-9 rounded-2xl overflow-hidden ring-2 ring-slate-200 shadow-sm hover:ring-emerald-500 transition-all cursor-pointer">
-          <img
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150"
-            alt="User Profile"
-            className="w-full h-full object-cover"
-          />
-        </button>
+        <div className="w-9 h-9 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+          GA
+        </div>
       </div>
     </aside>
   );

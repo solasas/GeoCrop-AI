@@ -29,4 +29,14 @@ export const deleteField = async (fieldId) => {
   return response.data;
 };
 
+export const fetchYieldPrediction = async (fieldId) => {
+  const response = await apiClient.get(`/fields/${fieldId}/yield-prediction?force_mock=true`);
+  return response.data;
+};
+
+export const fetchFieldAnalytics = async (fieldId) => {
+  const response = await apiClient.get(`/fields/${fieldId}/analytics?force_mock=true`);
+  return response.data;
+};
+
 export default apiClient;

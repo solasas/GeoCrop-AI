@@ -1,16 +1,23 @@
 import React from 'react';
-import { Cpu, TrendingUp, Sparkles, Scale, Info } from 'lucide-react';
+import { Cpu, Sparkles } from 'lucide-react';
 
 export default function YieldPredictCard({ prediction, areaHectares, cropType }) {
   if (!prediction) return null;
 
   const { predicted_yield_t_per_ha, total_production_tons, confidence_interval } = prediction;
-  const lower = confidence_interval?.lower_bound || roundVal(predicted_yield_t_per_ha * 0.9);
-  const upper = confidence_interval?.upper_bound || roundVal(predicted_yield_t_per_ha * 1.1);
 
-  // Position percentage of expected yield within confidence range
-  const rangeSpan = Math.max(0.1, upper - lower);
-  const expectedPositionPercent = Math.min(100, Math.max(0, ((predicted_yield_t_per_ha - lower) / rangeSpan) * 100));
+  // Convert t/ha to t/acre (1 t/ha = 0.404686 t/acre)
+  const yieldTonsPerAcre = roundVal((predicted_yield_t_per_ha || 4.35) * 0.404686);
+  const areaAcres = roundVal((areaHectares || 4.5) * 2.47105);
+
+  const lowerHa = confidence_interval?.lower_bound || roundVal(predicted_yield_t_per_ha * 0.9);
+  const upperHa = confidence_interval?.upper_bound || roundVal(predicted_yield_t_per_ha * 1.1);
+
+  const lower = roundVal(lowerHa * 0.404686);
+  const upper = roundVal(upperHa * 0.404686);
+
+  const rangeSpan = Math.max(0.05, upper - lower);
+  const expectedPositionPercent = Math.min(100, Math.max(0, ((yieldTonsPerAcre - lower) / rangeSpan) * 100));
 
   function roundVal(v) {
     return Math.round(v * 100) / 100;
@@ -41,17 +48,17 @@ export default function YieldPredictCard({ prediction, areaHectares, cropType })
         </span>
       </div>
 
-      {/* Main Yield Rate Display */}
+      {/* Main Yield Rate Display in t/acre */}
       <div className="grid grid-cols-2 gap-4 py-3 border-y border-slate-800/80">
         <div>
           <span className="text-[11px] text-slate-400 font-medium uppercase tracking-wider block mb-1">
             Predicted Yield Rate
           </span>
           <div className="flex items-baseline space-x-1.5">
-            <span className="text-3xl font-black tracking-tight text-white">{predicted_yield_t_per_ha}</span>
-            <span className="text-sm font-bold text-emerald-400">t/ha</span>
+            <span className="text-3xl font-black tracking-tight text-white">{yieldTonsPerAcre}</span>
+            <span className="text-sm font-bold text-emerald-400">t/acre</span>
           </div>
-          <span className="text-[11px] text-slate-400 mt-0.5 block">Metric Tons per Hectare</span>
+          <span className="text-[11px] text-slate-400 mt-0.5 block">Tons per Acre</span>
         </div>
 
         <div className="border-l border-slate-800/80 pl-4">
@@ -62,47 +69,40 @@ export default function YieldPredictCard({ prediction, areaHectares, cropType })
             <span className="text-3xl font-black tracking-tight text-white">{total_production_tons}</span>
             <span className="text-sm font-bold text-teal-400">Tons</span>
           </div>
-          <span className="text-[11px] text-slate-400 mt-0.5 block">{areaHectares} Hectares Total</span>
+          <span className="text-[11px] text-slate-400 mt-0.5 block">{areaAcres} Acres Total</span>
         </div>
       </div>
 
-      {/* Visual Confidence Range Bar (Pessimistic, Expected, Optimistic) */}
-      <div className="mt-4 pt-1">
-        <div className="flex items-center justify-between text-xs mb-2">
-          <span className="text-slate-300 font-semibold flex items-center gap-1">
-            <Scale className="w-3.5 h-3.5 text-emerald-400" />
+      {/* Confidence Range Bar in t/acre */}
+      <div className="mt-4 space-y-2">
+        <div className="flex justify-between items-center text-xs text-slate-300">
+          <span className="font-semibold flex items-center gap-1">
             <span>95% Confidence Range Gauge</span>
           </span>
-          <span className="text-[11px] text-slate-400 font-mono">
-            {lower} – {upper} t/ha
-          </span>
+          <span className="font-mono text-emerald-400 font-bold">{lower} &ndash; {upper} t/acre</span>
         </div>
 
-        {/* Range Bar Track */}
-        <div className="relative w-full h-3 bg-slate-950 rounded-full border border-slate-800 p-0.5 overflow-visible">
-          {/* Active Range Gradient */}
-          <div className="absolute left-0 right-0 top-0 bottom-0 rounded-full bg-gradient-to-r from-red-500/20 via-amber-500/30 to-emerald-500/40" />
-
-          {/* Expected Marker Pin */}
+        {/* Multi-segment Confidence Bar */}
+        <div className="relative w-full h-3 bg-slate-950 rounded-full border border-slate-800 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-red-500/80 via-amber-500/80 to-emerald-500/80" />
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-lg shadow-emerald-500/50 transition-all duration-500"
+            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full border-2 border-slate-900 shadow-md transition-all duration-500"
             style={{ left: `calc(${expectedPositionPercent}% - 8px)` }}
           />
         </div>
 
-        {/* Range Labels: Pessimistic, Expected, Optimistic */}
-        <div className="grid grid-cols-3 text-[11px] mt-2 pt-1 font-medium">
-          <div className="text-left text-red-400/90">
-            <span className="block text-[10px] text-slate-500 uppercase">Pessimistic</span>
-            <span className="font-mono font-bold">{lower} t/ha</span>
+        <div className="grid grid-cols-3 text-[10px] font-semibold text-slate-400 text-center pt-1">
+          <div className="text-left">
+            <span className="block text-slate-500">Pessimistic</span>
+            <span className="text-red-400">{lower} t/acre</span>
           </div>
-          <div className="text-center text-emerald-400">
-            <span className="block text-[10px] text-slate-500 uppercase">Expected</span>
-            <span className="font-mono font-bold">{predicted_yield_t_per_ha} t/ha</span>
+          <div>
+            <span className="block text-slate-500">Expected</span>
+            <span className="text-emerald-400 font-bold">{yieldTonsPerAcre} t/acre</span>
           </div>
-          <div className="text-right text-emerald-300">
-            <span className="block text-[10px] text-slate-500 uppercase">Optimistic</span>
-            <span className="font-mono font-bold">{upper} t/ha</span>
+          <div className="text-right">
+            <span className="block text-slate-500">Optimistic</span>
+            <span className="text-teal-300">{upper} t/acre</span>
           </div>
         </div>
       </div>

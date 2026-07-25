@@ -241,15 +241,17 @@ def _fallback_shap_explain(
 
     results = []
     for key, name, impact, val in raw_items:
-        sign = "+" if impact >= 0 else ""
+        impact_acres = round(impact * 0.404686, 2)
+        sign = "+" if impact_acres >= 0 else ""
         results.append({
             "feature_key": key,
             "feature_name": name,
-            "impact": impact,
-            "impact_label": f"{sign}{impact:.2f} t/ha",
+            "impact": impact_acres,
+            "impact_label": f"{sign}{impact_acres:.2f} t/acre",
             "value": val,
-            "is_positive": impact >= 0
+            "is_positive": impact_acres >= 0
         })
+
 
     return results
 
