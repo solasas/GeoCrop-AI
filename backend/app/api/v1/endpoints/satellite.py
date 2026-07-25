@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from app.core.database import get_db
 from app.models.field import Field
@@ -31,7 +31,7 @@ async def get_field_analytics(
 
     # Ensure valid date order
     if start_date >= end_date:
-        end_date = (datetime.strptime(start_date, "%Y-%m-%d") + datetime.timedelta(days=90)).strftime("%Y-%m-%d")
+        end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=90)).strftime("%Y-%m-%d")
 
     try:
         fusion_data = fuse_satellite_and_weather(

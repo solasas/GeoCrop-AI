@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
 import mapboxgl from 'mapbox-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
-import { Layers, MapPin, MousePointer, Shield, Maximize2 } from 'lucide-react';
+import { Layers, MousePointer, Layers3, RefreshCw } from 'lucide-react';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
@@ -12,274 +13,317 @@ export default function InteractiveMap({
   isDrawing,
   onPolygonDrawn
 }) {
-  const mapContainer = useRef(null);
-  const mapRef = useRef(null);
-  const drawRef = useRef(null);
-  const [mapLoaded, setMapLoaded] = useState(false);
-  const [svgCoordinates, setSvgCoordinates] = useState([]);
-  const [hoveredField, setHoveredField] = useState(null);
+  const mapContainerRef = useRef(null);
+  const mapboxRef = useRef(null);
+  const mapboxDrawRef = useRef(null);
 
-  // Initialize Mapbox GL JS if token is available
+  // Leaflet references
+  const leafletMapRef = useRef(null);
+  const leafletDrawLayerRef = useRef(null);
+  const leafletFieldsLayerRef = useRef(null);
+
+  const [activeTileProvider, setActiveTileProvider] = useState('esri'); // 'esri' | 'osm'
+  const [drawingVertices, setDrawingVertices] = useState([]);
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  // 1. Initialize Mapbox GL JS if Mapbox Token is provided
   useEffect(() => {
-    if (!MAPBOX_TOKEN || !mapContainer.current) return;
+    if (!MAPBOX_TOKEN || !mapContainerRef.current) return;
 
     mapboxgl.accessToken = MAPBOX_TOKEN;
 
     const map = new mapboxgl.Map({
-      container: mapContainer.current,
+      container: mapContainerRef.current,
       style: 'mapbox://styles/mapbox/satellite-streets-v12',
-      center: [-102.45, 38.55], // Sample agricultural region (Kansas / Midwest)
+      center: [-102.45, 38.55],
       zoom: 12,
     });
 
     const draw = new MapboxDraw({
       displayControlsDefault: false,
-      controls: {
-        polygon: true,
-        trash: true
-      },
+      controls: { polygon: true, trash: true },
       defaultMode: 'simple_select'
     });
 
     map.addControl(new mapboxgl.NavigationControl(), 'top-right');
     map.addControl(draw, 'top-right');
 
-    drawRef.current = draw;
-    mapRef.current = map;
+    mapboxDrawRef.current = draw;
+    mapboxRef.current = map;
 
     map.on('load', () => {
       setMapLoaded(true);
-
-      // Add fields GeoJSON source
       map.addSource('fields-source', {
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
-          features: fields.map(f => f.to_geojson_feature ? f.to_geojson_feature() : {
+          features: fields.map(f => ({
             type: 'Feature',
             id: f.id,
             properties: { id: f.id, name: f.name, crop_type: f.crop_type, area_hectares: f.area_hectares },
             geometry: f.geometry
-          })
+          }))
         }
       });
 
-      // Add field polygon fill layer
       map.addLayer({
         id: 'fields-fill',
         type: 'fill',
         source: 'fields-source',
         paint: {
-          'fill-color': [
-            'case',
-            ['==', ['get', 'id'], selectedFieldId || -1], '#10b981',
-            '#059669'
-          ],
+          'fill-color': ['case', ['==', ['get', 'id'], selectedFieldId || -1], '#10b981', '#059669'],
           'fill-opacity': 0.4
         }
       });
 
-      // Add field polygon outline layer
       map.addLayer({
         id: 'fields-line',
         type: 'line',
         source: 'fields-source',
-        paint: {
-          'line-color': '#34d399',
-          'line-width': 2
-        }
+        paint: { 'line-color': '#34d399', 'line-width': 2 }
       });
     });
 
-    // Draw event listeners
-    const handleDrawCreateOrUpdate = (e) => {
+    const handleDraw = () => {
       const data = draw.getAll();
       if (data.features.length > 0) {
-        const lastFeature = data.features[data.features.length - 1];
-        onPolygonDrawn(lastFeature.geometry);
+        onPolygonDrawn(data.features[data.features.length - 1].geometry);
       }
     };
 
-    map.on('draw.create', handleDrawCreateOrUpdate);
-    map.on('draw.update', handleDrawCreateOrUpdate);
+    map.on('draw.create', handleDraw);
+    map.on('draw.update', handleDraw);
+
+    return () => map.remove();
+  }, [MAPBOX_TOKEN]);
+
+  // 2. Initialize Leaflet zero-token Satellite / OpenStreetMap engine if Mapbox Token is absent
+  useEffect(() => {
+    if (MAPBOX_TOKEN || !mapContainerRef.current) return;
+
+    // Default center: Agricultural farmland region in Kansas/Midwest
+    const map = L.map(mapContainerRef.current, {
+      center: [38.55, -102.45],
+      zoom: 12,
+      zoomControl: false
+    });
+
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // High-Resolution Esri World Imagery Satellite Tile Layer (Zero Token Required)
+    const esriTileLayer = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS'
+      }
+    );
+
+    const osmTileLayer = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }
+    );
+
+    if (activeTileProvider === 'esri') {
+      esriTileLayer.addTo(map);
+    } else {
+      osmTileLayer.addTo(map);
+    }
+
+    // Layers for field boundaries & active drawing line
+    const fieldsGroup = L.featureGroup().addTo(map);
+    const drawGroup = L.featureGroup().addTo(map);
+
+    leafletMapRef.current = map;
+    leafletFieldsLayerRef.current = fieldsGroup;
+    leafletDrawLayerRef.current = drawGroup;
+
+    setMapLoaded(true);
 
     return () => {
       map.remove();
     };
-  }, [MAPBOX_TOKEN]);
+  }, [MAPBOX_TOKEN, activeTileProvider]);
 
-  // Update map features when fields state changes
+  // Handle Leaflet interactive map clicks for polygon drawing
   useEffect(() => {
-    if (!mapRef.current || !mapLoaded) return;
-    const source = mapRef.current.getSource('fields-source');
-    if (source) {
-      source.setData({
-        type: 'FeatureCollection',
-        features: fields.map(f => ({
-          type: 'Feature',
-          id: f.id,
-          properties: { id: f.id, name: f.name, crop_type: f.crop_type, area_hectares: f.area_hectares },
-          geometry: f.geometry
-        }))
+    const map = leafletMapRef.current;
+    if (!map || MAPBOX_TOKEN) return;
+
+    const handleMapClick = (e) => {
+      if (!isDrawing) return;
+
+      const { lat, lng } = e.latlng;
+      setDrawingVertices((prev) => {
+        const next = [...prev, [lng, lat]];
+
+        // Draw vertices and line
+        const drawGroup = leafletDrawLayerRef.current;
+        if (drawGroup) {
+          drawGroup.clearLayers();
+
+          // Render marker points
+          next.forEach(([l, a]) => {
+            L.circleMarker([a, l], {
+              radius: 6,
+              color: '#34d399',
+              fillColor: '#10b981',
+              fillOpacity: 0.9
+            }).addTo(drawGroup);
+          });
+
+          // Render connecting polyline / polygon
+          if (next.length >= 2) {
+            const latLngs = next.map(([l, a]) => [a, l]);
+            L.polygon(latLngs, {
+              color: '#34d399',
+              fillColor: '#10b981',
+              fillOpacity: 0.35,
+              dashArray: '5, 5'
+            }).addTo(drawGroup);
+          }
+        }
+
+        // Trigger polygon callback when 3+ vertices placed
+        if (next.length >= 3) {
+          const closedRing = [...next, next[0]];
+          onPolygonDrawn({
+            type: 'Polygon',
+            coordinates: [closedRing]
+          });
+        }
+
+        return next;
       });
-    }
-  }, [fields, selectedFieldId, mapLoaded]);
+    };
 
-  // Toggle Mapbox draw mode when isDrawing prop changes
+    map.on('click', handleMapClick);
+
+    return () => {
+      map.off('click', handleMapClick);
+    };
+  }, [isDrawing, MAPBOX_TOKEN]);
+
+  // Render ingested field boundaries on Leaflet map
   useEffect(() => {
-    if (drawRef.current) {
-      if (isDrawing) {
-        drawRef.current.changeMode('draw_polygon');
-      } else {
-        drawRef.current.changeMode('simple_select');
-        drawRef.current.deleteAll();
+    if (MAPBOX_TOKEN || !leafletFieldsLayerRef.current) return;
+
+    const fieldsGroup = leafletFieldsLayerRef.current;
+    fieldsGroup.clearLayers();
+
+    fields.forEach((field) => {
+      const isSelected = selectedFieldId === field.id;
+      const coords = field.geometry?.coordinates?.[0] || [];
+      if (!coords.length) return;
+
+      // Swap [lon, lat] to Leaflet [lat, lon]
+      const latLngs = coords.map(([lon, lat]) => [lat, lon]);
+
+      const polygonLayer = L.polygon(latLngs, {
+        color: isSelected ? '#10b981' : '#059669',
+        weight: isSelected ? 3 : 2,
+        fillColor: isSelected ? '#10b981' : '#047857',
+        fillOpacity: isSelected ? 0.5 : 0.3
+      });
+
+      polygonLayer.bindTooltip(`<b>${field.name}</b><br/>${field.crop_type} (${field.area_hectares} ha)`, {
+        permanent: false,
+        direction: 'top'
+      });
+
+      polygonLayer.on('click', () => {
+        onSelectField(field.id);
+      });
+
+      polygonLayer.addTo(fieldsGroup);
+    });
+  }, [fields, selectedFieldId, MAPBOX_TOKEN]);
+
+  // Reset drawing layer when drawing state finishes or cancels
+  useEffect(() => {
+    if (!isDrawing) {
+      setDrawingVertices([]);
+      if (leafletDrawLayerRef.current) {
+        leafletDrawLayerRef.current.clearLayers();
       }
     }
   }, [isDrawing]);
 
-  // SVG Fallback Canvas Handler for environments without Mapbox Access Token
-  const handleSvgCanvasClick = (e) => {
-    if (!isDrawing) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-
-    const newCoords = [...svgCoordinates, [x, y]];
-    setSvgCoordinates(newCoords);
-
-    // When at least 3 points are clicked, construct valid GeoJSON Polygon
-    if (newCoords.length >= 3) {
-      // Map screen % coords to sample geo bounding box (-102.50 to -102.40 lon, 38.50 to 38.60 lat)
-      const geoCoords = newCoords.map(([px, py]) => [
-        -102.50 + (px / 100.0) * 0.10,
-        38.60 - (py / 100.0) * 0.10
-      ]);
-      // Close polygon ring
-      geoCoords.push(geoCoords[0]);
-
-      onPolygonDrawn({
-        type: 'Polygon',
-        coordinates: [geoCoords]
-      });
-    }
-  };
-
-  const handleResetSvgDrawing = () => {
-    setSvgCoordinates([]);
-  };
-
   return (
     <div className="relative flex-1 h-full w-full bg-slate-950 overflow-hidden select-none">
-      {MAPBOX_TOKEN ? (
-        <div ref={mapContainer} className="w-full h-full" />
-      ) : (
-        /* Fallback High-Fidelity Spatial Canvas */
-        <div
-          onClick={handleSvgCanvasClick}
-          className={`relative w-full h-full bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/20 overflow-hidden ${
-            isDrawing ? 'cursor-crosshair' : 'cursor-default'
-          }`}
-        >
-          {/* Simulated Satellite Grid overlay */}
-          <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-40" />
+      {/* Map Container */}
+      <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-          <svg className="absolute inset-0 w-full h-full pointer-events-none">
-            {/* Render saved field polygons */}
-            {fields.map((field) => {
-              const isSelected = selectedFieldId === field.id;
-              // Map GeoJSON polygon coordinates to canvas % for display
-              const coords = field.geometry?.coordinates?.[0] || [];
-              const points = coords.map(([lon, lat]) => {
-                const x = ((lon - (-102.50)) / 0.10) * 100;
-                const y = ((38.60 - lat) / 0.10) * 100;
-                return `${x}%,${y}%`;
-              }).join(' ');
-
-              return (
-                <g key={field.id} onClick={() => onSelectField(field.id)} className="cursor-pointer pointer-events-auto">
-                  <polygon
-                    points={points}
-                    className={`transition-all duration-200 ${
-                      isSelected
-                        ? 'fill-emerald-500/50 stroke-emerald-400 stroke-[3]'
-                        : 'fill-emerald-500/25 stroke-emerald-500/70 stroke-[2] hover:fill-emerald-500/40'
-                    }`}
-                  />
-                  {/* Field Centroid Label */}
-                  {coords.length > 0 && (
-                    <text
-                      x={`${((coords[0][0] - (-102.50)) / 0.10) * 100}%`}
-                      y={`${((38.60 - coords[0][1]) / 0.10) * 100}%`}
-                      fill="#e2e8f0"
-                      fontSize="11"
-                      fontWeight="600"
-                      className="drop-shadow-md select-none"
-                    >
-                      {field.name} ({field.crop_type})
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-
-            {/* Render active drawing line */}
-            {svgCoordinates.length > 0 && (
-              <g>
-                <polyline
-                  points={svgCoordinates.map(([x, y]) => `${x}%,${y}%`).join(' ')}
-                  className="fill-none stroke-emerald-400 stroke-[2] stroke-dasharray-[4]"
-                />
-                {svgCoordinates.map(([x, y], idx) => (
-                  <circle
-                    key={idx}
-                    cx={`${x}%`}
-                    cy={`${y}%`}
-                    r="5"
-                    className="fill-emerald-400 stroke-white stroke-2 animate-pulse"
-                  />
-                ))}
-              </g>
-            )}
-          </svg>
-
-          {/* Top-Right Map Controls / Mode Status */}
-          <div className="absolute top-4 right-4 flex flex-col gap-2 z-20">
-            <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-xl p-3 shadow-xl text-xs space-y-1.5">
-              <div className="flex items-center space-x-2 text-slate-300 font-semibold">
-                <Layers className="w-4 h-4 text-emerald-400" />
-                <span>Spatial Map View</span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                {MAPBOX_TOKEN ? 'Mapbox Satellite Layer Active' : 'High-Resolution Spatial Canvas'}
-              </p>
-              {isDrawing && (
-                <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-emerald-400">
-                  <span className="font-mono">{svgCoordinates.length} vertices placed</span>
-                  <button
-                    onClick={handleResetSvgDrawing}
-                    className="text-[10px] underline hover:text-emerald-300"
-                  >
-                    Clear Vertices
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom Center Legend & Instructions */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/85 backdrop-blur-md border border-slate-800 px-4 py-2 rounded-full text-xs text-slate-300 flex items-center space-x-4 shadow-xl z-20">
+      {/* Map Layer Switcher & Status (Top-Right) */}
+      <div className="absolute top-4 right-4 flex flex-col gap-2 z-[1000]">
+        <div className="bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-xl p-3 shadow-2xl text-xs space-y-2">
+          <div className="flex items-center justify-between space-x-2 text-slate-200 font-semibold">
             <div className="flex items-center space-x-1.5">
-              <div className="w-3 h-3 rounded bg-emerald-500/50 border border-emerald-400" />
-              <span>Ingested Field Boundary</span>
+              <Layers className="w-4 h-4 text-emerald-400" />
+              <span>Map Engine</span>
             </div>
-            <div className="h-3 w-px bg-slate-700" />
-            <div className="flex items-center space-x-1.5 text-slate-400">
-              <MousePointer className="w-3.5 h-3.5" />
-              <span>{isDrawing ? 'Click canvas to set polygon corners' : 'Select field parcel to inspect'}</span>
-            </div>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-400 font-mono">
+              {MAPBOX_TOKEN ? 'Mapbox GL' : 'Esri Satellite (Free)'}
+            </span>
           </div>
+
+          {!MAPBOX_TOKEN && (
+            <div className="flex items-center space-x-1 bg-slate-950/80 p-1 rounded-lg border border-slate-800">
+              <button
+                onClick={() => setActiveTileProvider('esri')}
+                className={`flex-1 py-1 px-2 rounded font-medium text-[11px] transition-all ${
+                  activeTileProvider === 'esri'
+                    ? 'bg-emerald-500 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Satellite Imagery
+              </button>
+              <button
+                onClick={() => setActiveTileProvider('osm')}
+                className={`flex-1 py-1 px-2 rounded font-medium text-[11px] transition-all ${
+                  activeTileProvider === 'osm'
+                    ? 'bg-emerald-500 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                OpenStreetMap
+              </button>
+            </div>
+          )}
+
+          {isDrawing && (
+            <div className="pt-1.5 border-t border-slate-800 flex items-center justify-between text-emerald-400 text-[11px]">
+              <span className="font-mono">{drawingVertices.length} corners placed</span>
+              <button
+                onClick={() => {
+                  setDrawingVertices([]);
+                  if (leafletDrawLayerRef.current) leafletDrawLayerRef.current.clearLayers();
+                }}
+                className="underline hover:text-emerald-300"
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
+
+      {/* Bottom Center Map Instructions */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-slate-800 px-4 py-2 rounded-full text-xs text-slate-300 flex items-center space-x-4 shadow-2xl z-[1000]">
+        <div className="flex items-center space-x-1.5">
+          <div className="w-3 h-3 rounded bg-emerald-500/50 border border-emerald-400" />
+          <span>Ingested Field Boundary</span>
+        </div>
+        <div className="h-3 w-px bg-slate-700" />
+        <div className="flex items-center space-x-1.5 text-slate-400">
+          <MousePointer className="w-3.5 h-3.5 text-emerald-400" />
+          <span>{isDrawing ? 'Click map to place polygon corners' : 'Click field to inspect ML yield & satellite analytics'}</span>
+        </div>
+      </div>
     </div>
   );
 }

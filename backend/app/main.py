@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
-from app.api.v1.endpoints import fields
+from app.api.v1.endpoints import fields, satellite, prediction
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -32,8 +32,11 @@ async def root_health():
 
 # Include API Routers
 app.include_router(api_router, prefix=settings.API_V1_STR)
-# Alias for /api/fields requested in requirements
+
+# Aliases for direct /api/fields endpoints
 app.include_router(fields.router, prefix="/api/fields", tags=["Fields Direct"])
+app.include_router(satellite.router, prefix="/api/fields", tags=["Satellite Direct"])
+app.include_router(prediction.router, prefix="/api/fields", tags=["Yield Prediction Direct"])
 
 if __name__ == "__main__":
     import uvicorn

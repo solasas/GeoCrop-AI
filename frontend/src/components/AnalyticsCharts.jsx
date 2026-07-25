@@ -1,37 +1,42 @@
 import React, { useEffect, useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, AreaChart, Area } from 'recharts';
-import { Activity, Sun, CloudRain, TrendingUp, RefreshCw } from 'lucide-react';
+import { Activity, Sun, CloudRain, TrendingUp, RefreshCw, Cpu, Award, AlertTriangle, RotateCcw } from 'lucide-react';
 import apiClient from '../services/api';
 
 export default function AnalyticsCharts({ fieldId }) {
   const [analyticsData, setAnalyticsData] = useState(null);
+  const [predictionData, setPredictionData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const loadFieldData = async () => {
     if (!fieldId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [analyticsRes, predictionRes] = await Promise.all([
+        apiClient.get(`/fields/${fieldId}/analytics?force_mock=true`),
+        apiClient.get(`/fields/${fieldId}/yield-prediction?force_mock=true`)
+      ]);
+      setAnalyticsData(analyticsRes.data);
+      setPredictionData(predictionRes.data);
+    } catch (err) {
+      console.error("Failed to load analytics or ML prediction:", err);
+      const msg = err?.response?.data?.detail || err.message || "Could not connect to FastAPI server";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const fetchAnalytics = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await apiClient.get(`/fields/${fieldId}/analytics?force_mock=true`);
-        setAnalyticsData(response.data);
-      } catch (err) {
-        console.error("Failed to load analytics:", err);
-        setError("Could not load satellite and weather analytics");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAnalytics();
+  useEffect(() => {
+    loadFieldData();
   }, [fieldId]);
 
   if (!fieldId) {
     return (
-      <div className="h-full flex items-center justify-center p-6 text-slate-500 text-xs">
-        Select a field boundary parcel to view satellite vegetation indices and weather fusion charts.
+      <div className="h-full flex items-center justify-center p-6 text-slate-500 text-xs text-center">
+        Select a field boundary parcel to view satellite vegetation indices, weather fusion, and ML yield predictions.
       </div>
     );
   }
@@ -40,25 +45,114 @@ export default function AnalyticsCharts({ fieldId }) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-6 text-slate-400 text-xs space-y-2">
         <RefreshCw className="w-5 h-5 text-emerald-400 animate-spin" />
-        <span>Fusing Sentinel-2 & Open-Meteo Weather Series...</span>
+        <span>Fusing Sentinel-2 Satellite Imagery & Open-Meteo Weather Series...</span>
       </div>
     );
   }
 
   if (error || !analyticsData) {
     return (
-      <div className="h-full flex items-center justify-center p-6 text-red-400 text-xs">
-        {error || 'No analytics data available'}
+      <div className="h-full flex flex-col items-center justify-center p-6 text-slate-400 text-xs text-center space-y-3">
+        <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+          <AlertTriangle className="w-5 h-5" />
+        </div>
+        <div>
+          <h4 className="font-semibold text-slate-200 text-sm mb-1">Backend Connection Notice</h4>
+          <p className="text-slate-400 max-w-xs text-[11px] leading-relaxed">
+            {error || 'Ensure the FastAPI backend server is running on port 8000.'}
+          </p>
+        </div>
+        <button
+          onClick={loadFieldData}
+          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 text-xs font-medium transition-all"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>Retry Connection</span>
+        </button>
       </div>
     );
   }
 
   const { summary } = analyticsData.metadata;
   const timeSeries = analyticsData.time_series || [];
+  const prediction = predictionData?.prediction || null;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4 bg-slate-900/60 backdrop-blur-md border-t border-slate-800">
-      {/* Metric Summary Banner */}
+      
+      {/* ML Yield Prediction Hero Card */}
+      {prediction && (
+        <div className="bg-gradient-to-br from-emerald-950/60 via-slate-950 to-slate-950 border border-emerald-500/40 p-4 rounded-xl shadow-xl relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                <Cpu className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                XGBoost Crop Yield Inference
+              </h3>
+            </div>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              95% Confidence Interval
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 my-3 pt-2 border-t border-emerald-500/20">
+            <div>
+              <span className="text-[10px] text-slate-400 uppercase font-medium">Estimated Yield Rate</span>
+              <div className="flex items-baseline space-x-1.5 mt-0.5">
+                <span className="text-2xl font-black text-white">{prediction.predicted_yield_t_per_ha}</span>
+                <span className="text-xs font-semibold text-emerald-400">t/ha</span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Range: {prediction.confidence_interval?.lower_bound} – {prediction.confidence_interval?.upper_bound} t/ha
+              </span>
+            </div>
+
+            <div className="border-l border-slate-800 pl-4">
+              <span className="text-[10px] text-slate-400 uppercase font-medium">Estimated Field Harvest</span>
+              <div className="flex items-baseline space-x-1.5 mt-0.5">
+                <span className="text-2xl font-black text-white">{prediction.total_production_tons}</span>
+                <span className="text-xs font-semibold text-teal-400">Tons</span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Field Size: {predictionData.area_hectares} ha
+              </span>
+            </div>
+          </div>
+
+          {/* SHAP Feature Driver Explanations */}
+          {prediction.shap_explanations && prediction.shap_explanations.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-800/80">
+              <div className="flex items-center space-x-1 mb-2">
+                <Award className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-semibold text-slate-200">SHAP Feature Driver Explanations</span>
+              </div>
+
+              <div className="space-y-1.5">
+                {prediction.shap_explanations.slice(0, 3).map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-xs bg-slate-900/80 border border-slate-800/80 px-2.5 py-1.5 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span className="text-slate-300 font-medium">{item.feature_name}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">({item.value})</span>
+                    </div>
+                    <span className={`font-semibold font-mono text-[11px] px-2 py-0.5 rounded ${
+                      item.is_positive
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-red-500/15 text-red-400 border border-red-500/30'
+                    }`}>
+                      {item.impact_label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Metric Summary Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-slate-950/60 border border-slate-800 p-3 rounded-xl">
           <div className="flex items-center space-x-1.5 text-xs text-slate-400 mb-1">
@@ -84,7 +178,7 @@ export default function AnalyticsCharts({ fieldId }) {
             <span>Accum. GDD</span>
           </div>
           <p className="text-lg font-bold text-amber-400">{summary.accumulated_gdd} °C</p>
-          <span className="text-[10px] text-slate-500">Thermal Crop Units</span>
+          <span className="text-[10px] text-slate-500">Thermal Heat Units</span>
         </div>
 
         <div className="bg-slate-950/60 border border-slate-800 p-3 rounded-xl">
